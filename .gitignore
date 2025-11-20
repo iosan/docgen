@@ -1,0 +1,44 @@
+# Compiled Object files
+*.o
+*.obj
+
+# Executables
+*.exe
+*.out
+main
+/docgen
+/tests
+build/docgen
+build/tests
+
+# Debug files
+*.dSYM/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build directories
+build/
+bin/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Coverage files
+*.gcda
+*.gcno
+*.gcov
+coverage.info
+coverage/
+
+# Generated documentation
+*.adoc
