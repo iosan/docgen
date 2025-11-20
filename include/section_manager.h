@@ -27,6 +27,9 @@ public:
     int getSectionCount() const { return sections_.size(); }
     bool hasContent() const { return !sections_.empty(); }
     std::string getLoadedDocumentTitle() const { return loaded_document_title_; }
+    TextSection* getSectionAt(size_t index) const { 
+        return (index < sections_.size()) ? sections_[index].get() : nullptr; 
+    }
     
     // Save/Load operations
     bool saveToFile(const std::string& filepath) const;

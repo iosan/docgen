@@ -202,24 +202,6 @@ void MainWindow::createUI() {
     GtkStyleContext* frame_context = gtk_widget_get_style_context(order_frame);
     gtk_style_context_add_class(frame_context, "order-frame");
     
-    // Add watermark background to entire order frame
-    GtkCssProvider* watermark_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(watermark_provider,
-        "#order-frame { "
-        "  background-image: url('docs/images/watermark_order.png'); "
-        "  background-repeat: repeat; "
-        "  background-position: center; "
-        "  background-size: auto; "
-        "}"
-        "#order-frame * { "
-        "  background-color: transparent; "
-        "}",
-        -1, NULL);
-    gtk_style_context_add_provider(frame_context, 
-                                    GTK_STYLE_PROVIDER(watermark_provider),
-                                    GTK_STYLE_PROVIDER_PRIORITY_USER);
-    g_object_unref(watermark_provider);
-    
     // Add label with padding
     GtkWidget* order_label_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     GtkWidget* order_title = gtk_label_new("Section Order");
@@ -240,6 +222,30 @@ void MainWindow::createUI() {
                                    GTK_POLICY_AUTOMATIC,
                                    GTK_POLICY_NEVER);
     gtk_widget_set_size_request(order_scrolled, -1, 56);
+    gtk_widget_set_name(order_scrolled, "order-scrolled");
+    
+    // Add watermark background to order scrolled window
+    GtkCssProvider* watermark_provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(watermark_provider,
+        "#order-scrolled { "
+        "  background-image: url('docs/images/watermark_order.png'); "
+        "  background-repeat: no-repeat; "
+        "  background-position: center; "
+        "  background-size: cover; "
+        "  background-color: rgba(255, 255, 255, 0.9); "
+        "}"
+        "#order-scrolled * { "
+        "  background-color: transparent; "
+        "}"
+        "#order-scrolled viewport { "
+        "  background: linear-gradient(rgba(128, 128, 128, 0.15), rgba(128, 128, 128, 0.15)); "
+        "}",
+        -1, NULL);
+    GtkStyleContext* order_scrolled_context = gtk_widget_get_style_context(order_scrolled);
+    gtk_style_context_add_provider(order_scrolled_context, 
+                                    GTK_STYLE_PROVIDER(watermark_provider),
+                                    GTK_STYLE_PROVIDER_PRIORITY_USER);
+    g_object_unref(watermark_provider);
     
     GtkWidget* order_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_margin_start(order_box, 12);
