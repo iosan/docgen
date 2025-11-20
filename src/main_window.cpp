@@ -224,14 +224,16 @@ void MainWindow::createUI() {
     gtk_widget_set_size_request(order_scrolled, -1, 56);
     gtk_widget_set_name(order_scrolled, "order-scrolled");
     
-    // Add watermark background to order scrolled window
+    // Add watermark background to order scrolled window using embedded GResource
     GtkCssProvider* watermark_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(watermark_provider,
+    
+    // Use resource:// URI to reference embedded image
+    const gchar* css_with_watermark = 
         "#order-scrolled { "
-        "  background-image: url('docs/images/watermark_order.png'); "
-        "  background-repeat: no-repeat; "
-        "  background-position: center; "
-        "  background-size: cover; "
+        "  background-image: url('resource:///org/docgen/watermark_order.png'); "
+        "  background-repeat: repeat-x; "
+        "  background-position: left center; "
+        "  background-size: auto; "
         "  background-color: rgba(255, 255, 255, 0.9); "
         "}"
         "#order-scrolled * { "
@@ -239,7 +241,10 @@ void MainWindow::createUI() {
         "}"
         "#order-scrolled viewport { "
         "  background: linear-gradient(rgba(128, 128, 128, 0.15), rgba(128, 128, 128, 0.15)); "
-        "}",
+        "}";
+    
+    gtk_css_provider_load_from_data(watermark_provider,
+        css_with_watermark,
         -1, NULL);
     GtkStyleContext* order_scrolled_context = gtk_widget_get_style_context(order_scrolled);
     gtk_style_context_add_provider(order_scrolled_context, 
