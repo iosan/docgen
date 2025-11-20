@@ -2,6 +2,8 @@
 
 A GTK3-based document management application for creating and organizing text sections with drag-and-drop reordering and AsciiDoc export.
 
+![DocGen Application](docs/images/docgen_ss.png)
+
 ## Features
 
 - **Section Management**: Create and manage multiple text sections with custom headers
