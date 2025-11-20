@@ -13,6 +13,7 @@ public:
 
     void show();
     GtkWindow* getWindow() const { return GTK_WINDOW(window_); }
+    std::string getDocumentTitle() const;
 
 private:
     // Window and main container
@@ -22,6 +23,7 @@ private:
     // Components
     std::unique_ptr<SectionManager> section_manager_;
     TextViewer text_viewer_;
+    GtkWidget* document_title_entry_;
 
     // UI Creation methods
     void createMenuBar();

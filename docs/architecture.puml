@@ -1,0 +1,167 @@
+@startuml architecture
+!define LIGHTYELLOW #FFFFCC
+!define LIGHTBLUE #E6F3FF
+!define LIGHTGREEN #E6FFE6
+
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam shadowing false
+skinparam DefaultFontSize 12
+skinparam ClassFontSize 11
+skinparam ArrowFontSize 10
+
+package "DocGen Application" {
+    
+    class MainWindow <<GTK3>> LIGHTYELLOW {
+        - window_: GtkWidget*
+        - main_vbox_: GtkWidget*
+        - section_manager_: SectionManager*
+        - document_title_entry_: GtkWidget*
+        - text_viewer_: TextViewer
+        - current_set_file_: string
+        - has_unsaved_changes_: bool
+        + MainWindow(app)
+        + show()
+        + getDocumentTitle(): string
+        --Static Callbacks--
+        + onAddSection()
+        + onClearAll()
+        + onCreateDoc()
+        + onSaveSet()
+        + onOpenSet()
+        + onQuit()
+        + onAbout()
+        --Private--
+        - createMenuBar()
+        - createUI()
+        - updateTitle()
+        - promptSaveIfNeeded(): bool
+    }
+    
+    class SectionManager <<Core Logic>> LIGHTBLUE {
+        - text_container_: GtkWidget*
+        - order_box_: GtkWidget*
+        - sections_: vector<unique_ptr<TextSection>>
+        - section_counter_: int
+        - loaded_document_title_: string
+        - dragged_widget_: GtkWidget*
+        - dragged_source_index_: int
+        + SectionManager(container, order_box)
+        + addSection(header, content)
+        + deleteSection(section)
+        + clearAll()
+        + getSectionCount(): int
+        + hasContent(): bool
+        + getLoadedDocumentTitle(): string
+        --Persistence--
+        + saveToFile(filepath): bool
+        + loadFromFile(filepath): bool
+        --Export--
+        + generateAsciiDoc(title): string
+        --Private--
+        - createMainSection()
+        - setupDragAndDrop()
+        - onDragBegin/End/Motion()
+        - onDragDataReceived()
+    }
+    
+    class TextSection <<Widget>> LIGHTGREEN {
+        - position_: int
+        - header_text_: string
+        - manager_: SectionManager*
+        - container_: GtkWidget*
+        - delete_button_: GtkWidget*
+        - header_label_: GtkWidget*
+        - text_view_: GtkWidget*
+        - order_button_: GtkWidget*
+        - order_label_: GtkWidget*
+        - order_level_label_: GtkWidget*
+        - radio_i/ii/iii_: GtkWidget*
+        - headline_entry_: GtkWidget*
+        + TextSection(position, header)
+        + getContainer(): GtkWidget*
+        + getOrderButton(): GtkWidget*
+        + getHeader(): string
+        + getHeadline(): string
+        + getHeadlineLevel(): int
+        --Setters--
+        + setHeader(header)
+        + setContent(content)
+        + setHeadline(headline)
+        + setHeadlineLevel(level)
+        + setManager(manager)
+        --Display--
+        + show()
+        + hide()
+        --Private--
+        - createUI()
+        - onRadioChanged()
+        - onDeleteClicked()
+        - updateLevelIndicator()
+    }
+    
+    class TextViewer <<File I/O>> LIGHTGREEN {
+        + loadFile(filepath): string
+        + saveFile(filepath, content): bool
+    }
+    
+    class "File Format" <<Data>> {
+        [DOCUMENT_TITLE:text]
+        [SECTION:header]
+        [HEADLINE:text]
+        [LEVEL:1-3]
+        content...
+        [END_SECTION]
+    }
+    
+    class "AsciiDoc Output" <<Export>> {
+        = Document Title
+        
+        == Section Headline (Level 1)
+        content...
+        
+        === Section Headline (Level 2)
+        content...
+        
+        ==== Section Headline (Level 3)
+        content...
+    }
+    
+    MainWindow "1" *-- "1" SectionManager : manages
+    MainWindow "1" *-- "1" TextViewer : uses
+    SectionManager "1" *-- "0..*" TextSection : contains
+    TextSection "0..*" --> "1" SectionManager : notifies for deletion
+    
+    MainWindow ..> "File Format" : saves/loads\n(.docgenset)
+    SectionManager ..> "File Format" : reads/writes
+    SectionManager ..> "AsciiDoc Output" : generates\n(.adoc)
+    
+    note right of TextSection
+        Each section has:
+        - Custom headline text
+        - Level selection (I, II, III)
+        - Delete button (red minus)
+        - Order indicator with level
+        - Drag-and-drop support
+    end note
+    
+    note right of SectionManager
+        Handles:
+        - Section ordering via drag-drop
+        - Persistence with headlines/levels
+        - AsciiDoc generation with hierarchy
+        - Section deletion
+        - Document title management
+    end note
+    
+    note left of MainWindow
+        UI Features:
+        - Document title input
+        - Icon buttons (add/clear)
+        - Watermarked order area
+        - Compact section display
+        - Menu bar with file operations
+    end note
+}
+
+@enduml

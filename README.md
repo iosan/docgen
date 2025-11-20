@@ -7,10 +7,14 @@ A GTK3-based document management application for creating and organizing text se
 ## Features
 
 - **Section Management**: Create and manage multiple text sections with custom headers
+- **Customizable Headlines**: Each section has its own headline with 3 configurable levels (I, II, III)
+- **Document Title**: Set a main document title for your generated documents
 - **Drag-and-Drop Reordering**: Intuitive section reordering with real-time visual feedback
-- **Set Persistence**: Save and load section sets with all content and ordering
-- **AsciiDoc Export**: Generate professional AsciiDoc documents from your sections
-- **Clean UI**: Modern GTK3 interface with CSS styling
+- **Section Deletion**: Remove individual sections with red minus button
+- **Set Persistence**: Save and load section sets (`.docgenset` format) with all content, headlines, and levels
+- **AsciiDoc Export**: Generate professional AsciiDoc documents with proper heading hierarchy
+- **Visual Watermark**: Background watermark in section order area for visual appeal
+- **Clean UI**: Modern GTK3 interface with CSS styling and compact design
 
 ## Building
 
@@ -30,11 +34,17 @@ cd build
 
 ## Usage
 
-1. **Add Sections**: Edit → Add Text Section
-2. **Reorder**: Drag section buttons in the order panel
-3. **Save Set**: File → Save Set (saves as `.txt` file)
-4. **Load Set**: File → Open Set
-5. **Export**: Edit → Create Doc (generates `.adoc` file)
+1. **Set Document Title**: Enter the main document title in the "Main Document Title" field
+2. **Add Sections**: Edit → Add Text Section (or use the + icon)
+3. **Configure Headlines**: 
+   - Enter section headline text in the "Headline" input field
+   - Select heading level (I, II, or III) using radio buttons
+4. **Reorder**: Drag section buttons in the order panel
+5. **Delete Sections**: Click the red minus (−) button next to the filename
+6. **Save Set**: File → Save Set (saves as `.docgenset` file with all metadata)
+7. **Load Set**: File → Open Set (restores document title, headlines, and levels)
+8. **Clear All**: Edit → Clear All (or use trash icon) to remove all sections
+9. **Export**: Edit → Create AsciiDoc (generates `.adoc` file with proper heading structure)
 
 ## Testing
 
@@ -75,6 +85,38 @@ make coverage
 
 The HTML coverage report will be in `build/coverage/index.html`. Open it in a browser to view detailed coverage information.
 
+## File Format
+
+### .docgenset Format
+Section sets are saved with metadata:
+```
+[DOCUMENT_TITLE:Your Document Title]
+[SECTION:filename.txt]
+[HEADLINE:Section Headline Text]
+[LEVEL:2]
+Content of the section...
+[END_SECTION]
+```
+
+### AsciiDoc Export
+Generated documents use proper heading hierarchy:
+```asciidoc
+= Document Title
+
+== Level 1 Heading
+Content...
+
+=== Level 2 Heading
+Content...
+
+==== Level 3 Heading
+Content...
+```
+
+## Architecture
+
+![Architecture Diagram](docs/images/architecture.png)
+
 ## Project Structure
 
 ```
@@ -93,8 +135,14 @@ docgen/
 │   └── text_viewer.h
 ├── tests/                   # Test files (Google Test)
 │   └── test_main.cpp
+├── docs/                    # Documentation
+│   ├── architecture.puml   # PlantUML diagram
+│   └── images/             # Images and watermark generator
+│       ├── architecture.png
+│       ├── watermark_order.png
+│       └── random_arrows.html
 ├── examples/                # Example files
-│   ├── *.txt               # Example section sets
+│   ├── *.docgenset         # Example section sets
 │   └── *.adoc              # Generated documents (ignored)
 ├── build/                   # Build directory (ignored)
 └── README.md

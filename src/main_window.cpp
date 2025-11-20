@@ -4,7 +4,7 @@
 
 MainWindow::MainWindow(GtkApplication* app)
     : window_(nullptr), main_vbox_(nullptr), section_manager_(nullptr),
-      has_unsaved_changes_(false), current_set_file_("") {
+      document_title_entry_(nullptr), has_unsaved_changes_(false), current_set_file_("") {
     
     window_ = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window_), "Text File Viewer");
@@ -70,7 +70,7 @@ void MainWindow::createMenuBar() {
 
     gtk_menu_shell_append(GTK_MENU_SHELL(edit_menu), gtk_separator_menu_item_new());
 
-    GtkWidget* create_doc_item = gtk_menu_item_new_with_label("Create Doc...");
+    GtkWidget* create_doc_item = gtk_menu_item_new_with_label("Create AsciiDoc...");
     g_signal_connect(create_doc_item, "activate", G_CALLBACK(onCreateDoc), this);
     gtk_menu_shell_append(GTK_MENU_SHELL(edit_menu), create_doc_item);
 
@@ -89,6 +89,26 @@ void MainWindow::createMenuBar() {
     GtkWidget* about_item = gtk_menu_item_new_with_label("About Text Viewer");
     g_signal_connect(about_item, "activate", G_CALLBACK(onAbout), this);
     gtk_menu_shell_append(GTK_MENU_SHELL(about_menu), about_item);
+    
+    // Plus icon menu item (add text section)
+    GtkWidget* add_icon_item = gtk_menu_item_new();
+    GtkWidget* add_icon = gtk_image_new_from_icon_name("list-add", GTK_ICON_SIZE_MENU);
+    gtk_container_add(GTK_CONTAINER(add_icon_item), add_icon);
+    g_signal_connect(add_icon_item, "button-press-event", G_CALLBACK(+[](GtkWidget*, GdkEventButton*, gpointer data) -> gboolean {
+        onAddSection(nullptr, data);
+        return TRUE;
+    }), this);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu_bar), add_icon_item);
+    
+    // Trash icon menu item (clear all)
+    GtkWidget* clear_icon_item = gtk_menu_item_new();
+    GtkWidget* clear_icon = gtk_image_new_from_icon_name("user-trash", GTK_ICON_SIZE_MENU);
+    gtk_container_add(GTK_CONTAINER(clear_icon_item), clear_icon);
+    g_signal_connect(clear_icon_item, "button-press-event", G_CALLBACK(+[](GtkWidget*, GdkEventButton*, gpointer data) -> gboolean {
+        onClearAll(nullptr, data);
+        return TRUE;
+    }), this);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu_bar), clear_icon_item);
 }
 
 void MainWindow::createUI() {
@@ -96,12 +116,19 @@ void MainWindow::createUI() {
     GtkCssProvider* css_provider = gtk_css_provider_new();
     const gchar* css_data = 
         "window { background-color: #f5f5f5; }"
+        "menuitem { "
+        "  box-shadow: none; "
+        "  -gtk-icon-shadow: none; "
+        "}"
+        "menuitem:hover { "
+        "  box-shadow: none; "
+        "}"
         ".section-container { "
         "  background-color: white; "
         "  border-radius: 8px; "
         "  box-shadow: 0 2px 4px rgba(0,0,0,0.1); "
-        "  margin: 8px; "
-        "  padding: 12px; "
+        "  margin: 6px; "
+        "  padding: 8px; "
         "}"
         ".order-frame { "
         "  background-color: #ffffff; "
@@ -137,10 +164,30 @@ void MainWindow::createUI() {
         "  padding: 8px; "
         "  margin-bottom: 8px; "
         "}"
+        "entry { "
+        "  font-size: 0.85em; "
+        "  padding: 4px 6px; "
+        "  min-height: 24px; "
+        "}"
+        "frame > label { "
+        "  font-size: 0.85em; "
+        "}"
+        "frame entry { "
+        "  font-size: 0.85em; "
+        "}"
+        "radiobutton { "
+        "  font-size: 0.8em; "
+        "  padding: 2px; "
+        "  min-height: 18px; "
+        "}"
+        "radiobutton label { "
+        "  font-size: 0.8em; "
+        "}"
         "textview { "
         "  border-radius: 4px; "
-        "  padding: 8px; "
+        "  padding: 4px; "
         "  font-family: monospace; "
+        "  font-size: 0.85em; "
         "}";
     
     gtk_css_provider_load_from_data(css_provider, css_data, -1, NULL);
@@ -154,6 +201,24 @@ void MainWindow::createUI() {
     gtk_widget_set_name(order_frame, "order-frame");
     GtkStyleContext* frame_context = gtk_widget_get_style_context(order_frame);
     gtk_style_context_add_class(frame_context, "order-frame");
+    
+    // Add watermark background to entire order frame
+    GtkCssProvider* watermark_provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(watermark_provider,
+        "#order-frame { "
+        "  background-image: url('docs/images/watermark_order.png'); "
+        "  background-repeat: repeat; "
+        "  background-position: center; "
+        "  background-size: auto; "
+        "}"
+        "#order-frame * { "
+        "  background-color: transparent; "
+        "}",
+        -1, NULL);
+    gtk_style_context_add_provider(frame_context, 
+                                    GTK_STYLE_PROVIDER(watermark_provider),
+                                    GTK_STYLE_PROVIDER_PRIORITY_USER);
+    g_object_unref(watermark_provider);
     
     // Add label with padding
     GtkWidget* order_label_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -183,12 +248,52 @@ void MainWindow::createUI() {
     gtk_widget_set_margin_bottom(order_box, 8);
     gtk_container_add(GTK_CONTAINER(order_scrolled), order_box);
     gtk_box_pack_start(GTK_BOX(order_label_box), order_scrolled, FALSE, FALSE, 0);
+    
+    // Document title input box
+    GtkWidget* title_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(title_box, 12);
+    gtk_widget_set_margin_end(title_box, 12);
+    gtk_widget_set_margin_top(title_box, 4);
+    gtk_widget_set_margin_bottom(title_box, 8);
+    
+    GtkWidget* title_label = gtk_label_new("Main Document Title:");
+    gtk_widget_set_halign(title_label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(title_box), title_label, FALSE, FALSE, 0);
+    
+    document_title_entry_ = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(document_title_entry_), "Enter main document title...");
+    gtk_widget_set_hexpand(document_title_entry_, TRUE);
+    gtk_box_pack_start(GTK_BOX(title_box), document_title_entry_, TRUE, TRUE, 0);
+    
+    gtk_box_pack_start(GTK_BOX(order_label_box), title_box, FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(order_frame), order_label_box);
     gtk_widget_set_margin_start(order_frame, 12);
     gtk_widget_set_margin_end(order_frame, 12);
     gtk_widget_set_margin_top(order_frame, 12);
     gtk_widget_set_margin_bottom(order_frame, 8);
     gtk_box_pack_start(GTK_BOX(main_vbox_), order_frame, FALSE, FALSE, 0);
+
+    // Frame for text sections
+    GtkWidget* text_sections_frame = gtk_frame_new(NULL);
+    GtkStyleContext* sections_frame_context = gtk_widget_get_style_context(text_sections_frame);
+    gtk_style_context_add_class(sections_frame_context, "order-frame");
+    
+    // Vertical box to hold title label and scrolled window
+    GtkWidget* sections_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    
+    // Text Sections title label
+    GtkWidget* sections_title = gtk_label_new("Text Sections");
+    PangoAttrList* sections_title_attrs = pango_attr_list_new();
+    pango_attr_list_insert(sections_title_attrs, pango_attr_weight_new(PANGO_WEIGHT_SEMIBOLD));
+    pango_attr_list_insert(sections_title_attrs, pango_attr_scale_new(0.9));
+    gtk_label_set_attributes(GTK_LABEL(sections_title), sections_title_attrs);
+    pango_attr_list_unref(sections_title_attrs);
+    gtk_widget_set_halign(sections_title, GTK_ALIGN_START);
+    gtk_widget_set_margin_start(sections_title, 12);
+    gtk_widget_set_margin_end(sections_title, 12);
+    gtk_widget_set_margin_top(sections_title, 8);
+    gtk_widget_set_margin_bottom(sections_title, 4);
+    gtk_box_pack_start(GTK_BOX(sections_vbox), sections_title, FALSE, FALSE, 0);
 
     // Main scrolled window to contain all text views
     GtkWidget* main_scrolled = gtk_scrolled_window_new(NULL, NULL);
@@ -197,12 +302,18 @@ void MainWindow::createUI() {
                                    GTK_POLICY_AUTOMATIC);
     gtk_widget_set_margin_start(main_scrolled, 12);
     gtk_widget_set_margin_end(main_scrolled, 12);
-    gtk_widget_set_margin_bottom(main_scrolled, 12);
-    gtk_box_pack_start(GTK_BOX(main_vbox_), main_scrolled, TRUE, TRUE, 0);
-
+    gtk_widget_set_margin_bottom(main_scrolled, 8);
+    gtk_box_pack_start(GTK_BOX(sections_vbox), main_scrolled, TRUE, TRUE, 0);
+    
     // Container for all text views
     GtkWidget* text_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
     gtk_container_add(GTK_CONTAINER(main_scrolled), text_container);
+    
+    gtk_container_add(GTK_CONTAINER(text_sections_frame), sections_vbox);
+    gtk_widget_set_margin_start(text_sections_frame, 12);
+    gtk_widget_set_margin_end(text_sections_frame, 12);
+    gtk_widget_set_margin_bottom(text_sections_frame, 12);
+    gtk_box_pack_start(GTK_BOX(main_vbox_), text_sections_frame, TRUE, TRUE, 0);
 
     // Create section manager
     section_manager_ = std::make_unique<SectionManager>(text_container, order_box);
@@ -210,6 +321,12 @@ void MainWindow::createUI() {
 
 void MainWindow::show() {
     gtk_widget_show_all(window_);
+}
+
+std::string MainWindow::getDocumentTitle() const {
+    const char* text = gtk_entry_get_text(GTK_ENTRY(document_title_entry_));
+    std::string title = text ? std::string(text) : "";
+    return title.empty() ? "Default title" : title;
 }
 
 // Static callback implementations
@@ -270,16 +387,23 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
             gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), window->current_set_file_.c_str());
         }
         
-        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-            gchar* filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-            
+        gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+        gchar* filename = NULL;
+        
+        if (response == GTK_RESPONSE_ACCEPT) {
+            filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        }
+        
+        // Destroy dialog immediately after getting response
+        gtk_widget_destroy(dialog);
+        
+        if (response == GTK_RESPONSE_ACCEPT && filename) {
             if (window->section_manager_->saveToFile(filename)) {
                 window->current_set_file_ = filename;
                 window->has_unsaved_changes_ = false;
                 window->updateTitle();
             } else {
                 g_free(filename);
-                gtk_widget_destroy(dialog);
                 
                 GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
                                                                  GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -293,11 +417,8 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
             
             g_free(filename);
         } else {
-            gtk_widget_destroy(dialog);
             return; // User cancelled
         }
-        
-        gtk_widget_destroy(dialog);
     }
     
     // Now create the AsciiDoc file
@@ -316,7 +437,7 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
     
     gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(doc_dialog), TRUE);
     
-    // Set default filename based on set filename, replacing .txt with .adoc
+    // Set default filename based on set filename, replacing .docgenset with .adoc
     if (!window->current_set_file_.empty()) {
         // Extract directory and filename
         size_t last_slash = window->current_set_file_.find_last_of("/\\");
@@ -330,12 +451,13 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
             filename = window->current_set_file_;
         }
         
-        // Replace .txt extension with .adoc
-        if (filename.length() >= 4 && 
-            filename.substr(filename.length() - 4) == ".txt") {
-            filename = filename.substr(0, filename.length() - 4) + ".adoc";
-        } else {
-            // If not .txt, just append .adoc
+        // Replace .docgenset extension with .adoc, or add .adoc if not present
+        if (filename.length() >= 10 && 
+            filename.substr(filename.length() - 10) == ".docgenset") {
+            filename = filename.substr(0, filename.length() - 10) + ".adoc";
+        } else if (filename.length() < 5 || 
+                   filename.substr(filename.length() - 5) != ".adoc") {
+            // Only append .adoc if it doesn't already have it
             filename += ".adoc";
         }
         
@@ -348,29 +470,19 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
         gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(doc_dialog), "document.adoc");
     }
     
-    if (gtk_dialog_run(GTK_DIALOG(doc_dialog)) == GTK_RESPONSE_ACCEPT) {
-        gchar* doc_filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(doc_dialog));
-        
-        // Extract set name without extension for document title
-        std::string doc_title;
-        if (!window->current_set_file_.empty()) {
-            size_t last_slash = window->current_set_file_.find_last_of("/\\");
-            size_t last_dot = window->current_set_file_.find_last_of('.');
-            std::string base_name = window->current_set_file_;
-            if (last_slash != std::string::npos) {
-                base_name = base_name.substr(last_slash + 1);
-            }
-            if (last_dot != std::string::npos) {
-                size_t dot_pos = base_name.find_last_of('.');
-                if (dot_pos != std::string::npos) {
-                    doc_title = base_name.substr(0, dot_pos);
-                } else {
-                    doc_title = base_name;
-                }
-            } else {
-                doc_title = base_name;
-            }
-        }
+    gint doc_response = gtk_dialog_run(GTK_DIALOG(doc_dialog));
+    gchar* doc_filename = NULL;
+    
+    if (doc_response == GTK_RESPONSE_ACCEPT) {
+        doc_filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(doc_dialog));
+    }
+    
+    // Destroy dialog immediately after getting response
+    gtk_widget_destroy(doc_dialog);
+    
+    if (doc_response == GTK_RESPONSE_ACCEPT && doc_filename) {
+        // Get document title from input box
+        std::string doc_title = window->getDocumentTitle();
         
         // Generate AsciiDoc content
         std::string asciidoc_content = window->section_manager_->generateAsciiDoc(doc_title);
@@ -380,15 +492,6 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
         if (doc_file.is_open()) {
             doc_file << asciidoc_content;
             doc_file.close();
-            
-            // Show success message
-            GtkWidget* success_dialog = gtk_message_dialog_new(window->getWindow(),
-                                                               GTK_DIALOG_DESTROY_WITH_PARENT,
-                                                               GTK_MESSAGE_INFO,
-                                                               GTK_BUTTONS_OK,
-                                                               "AsciiDoc created successfully.");
-            gtk_dialog_run(GTK_DIALOG(success_dialog));
-            gtk_widget_destroy(success_dialog);
         } else {
             GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
                                                              GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -401,14 +504,14 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
         
         g_free(doc_filename);
     }
-    
-    gtk_widget_destroy(doc_dialog);
 }
 
 void MainWindow::onClearAll(GtkMenuItem* item, gpointer user_data) {
     (void)item;
     MainWindow* window = static_cast<MainWindow*>(user_data);
     window->section_manager_->clearAll();
+    // Clear the document title field
+    gtk_entry_set_text(GTK_ENTRY(window->document_title_entry_), "");
     window->has_unsaved_changes_ = false;
     window->current_set_file_ = "";
 }
@@ -451,13 +554,27 @@ void MainWindow::onSaveSet(GtkMenuItem* item, gpointer user_data) {
     if (!window->current_set_file_.empty()) {
         gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), window->current_set_file_.c_str());
     } else {
-        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "section_set.txt");
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "section_set.docgenset");
     }
     
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         gchar* filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
         
+        // First save sections to get content
         if (window->section_manager_->saveToFile(filename)) {
+            // Prepend document title to file
+            std::string doc_title = window->getDocumentTitle();
+            if (doc_title != "Default title") {
+                std::ifstream input(filename);
+                std::string content((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+                input.close();
+                
+                std::ofstream output(filename);
+                output << "[DOCUMENT_TITLE:" << doc_title << "]\n";
+                output << content;
+                output.close();
+            }
+            
             window->current_set_file_ = filename;
             window->has_unsaved_changes_ = false;
             window->updateTitle();
@@ -500,6 +617,11 @@ void MainWindow::onOpenSet(GtkMenuItem* item, gpointer user_data) {
             window->current_set_file_ = filename;
             window->has_unsaved_changes_ = false;
             window->updateTitle();
+            // Load document title from the loaded file
+            std::string doc_title = window->section_manager_->getLoadedDocumentTitle();
+            if (!doc_title.empty()) {
+                gtk_entry_set_text(GTK_ENTRY(window->document_title_entry_), doc_title.c_str());
+            }
         } else {
             GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
                                                              GTK_DIALOG_DESTROY_WITH_PARENT,

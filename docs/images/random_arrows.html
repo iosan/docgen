@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Arrows</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        canvas {
+            background: white;
+            border: 2px solid #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #fff;
+        }
+        button:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="generateArrows()">Regenerate</button>
+        <button onclick="downloadImage()">Download</button>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        canvas.width = 2200;
+        canvas.height = 250;
+
+        function drawArrow(x, y, size, direction, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Rotate for left-pointing arrows
+            if (direction === 'left') {
+                ctx.rotate(Math.PI);
+            }
+            
+            ctx.globalAlpha = 0.15;
+            ctx.fillStyle = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            
+            // Draw arrow shaft
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.4, 0);
+            ctx.lineTo(size * 0.2, 0);
+            ctx.stroke();
+            
+            // Draw arrow head
+            ctx.beginPath();
+            ctx.moveTo(size * 0.2, 0);
+            ctx.lineTo(size * 0.1, -size * 0.15);
+            ctx.lineTo(size * 0.4, 0);
+            ctx.lineTo(size * 0.1, size * 0.15);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        function randomColor() {
+            const greys = [
+                '#333333', '#4D4D4D', '#666666', '#808080', 
+                '#999999', '#B3B3B3', '#CCCCCC', '#555555',
+                '#707070', '#8B8B8B', '#A0A0A0', '#757575'
+            ];
+            return greys[Math.floor(Math.random() * greys.length)];
+        }
+
+        function generateArrows() {
+            // Clear canvas
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Generate 120-160 random arrows
+            const numArrows = 120 + Math.floor(Math.random() * 40);
+            
+            for (let i = 0; i < numArrows; i++) {
+                const x = 50 + Math.random() * (canvas.width - 100);
+                const y = 50 + Math.random() * (canvas.height - 100);
+                const size = 30 + Math.random() * 80;
+                const direction = Math.random() > 0.5 ? 'right' : 'left';
+                const color = randomColor();
+                
+                drawArrow(x, y, size, direction, color);
+            }
+        }
+
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.download = 'watermark_order.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // Generate initial arrows
+        generateArrows();
+    </script>
+</body>
+</html>
