@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(docgen VERSION 1.0.0 LANGUAGES CXX)
+project(docgen VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -29,12 +29,31 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 
+# Generate GResource
+find_program(GLIB_COMPILE_RESOURCES NAMES glib-compile-resources REQUIRED)
+set(GRESOURCE_XML ${PROJECT_SOURCE_DIR}/resources/docgen.gresource.xml)
+set(GRESOURCE_C ${CMAKE_CURRENT_BINARY_DIR}/resources.c)
+
+add_custom_command(
+    OUTPUT ${GRESOURCE_C}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/resources
+    COMMAND ${GLIB_COMPILE_RESOURCES}
+    ARGS
+        --target=${GRESOURCE_C}
+        --generate-source
+        ${GRESOURCE_XML}
+    VERBATIM
+    MAIN_DEPENDENCY ${GRESOURCE_XML}
+    DEPENDS ${PROJECT_SOURCE_DIR}/resources/watermark_order.png
+)
+
 # Create a library for shared code
 add_library(text_viewer_lib
     src/text_viewer.cpp
     src/text_section.cpp
     src/section_manager.cpp
     src/main_window.cpp
+    ${GRESOURCE_C}
 )
 
 # Add executable

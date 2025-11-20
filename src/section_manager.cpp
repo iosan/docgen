@@ -12,7 +12,7 @@ SectionManager::SectionManager(GtkWidget* text_container, GtkWidget* order_box)
     : text_container_(text_container), order_box_(order_box),
       section_counter_(0), main_section_(nullptr),
       main_order_button_(nullptr), main_text_view_(nullptr),
-      dragged_widget_(nullptr), dragged_source_index_(-1) {
+      dragged_widget_(nullptr), loaded_document_title_(""), dragged_source_index_(-1) {
     createMainSection();
     
     // Make order box a drop target for gaps between elements
@@ -142,6 +142,8 @@ void SectionManager::addSection(const std::string& header, const std::string& co
     section_counter_++;
     
     auto section = std::make_unique<TextSection>(section_counter_, header);
+    section->setManager(this);
+    
     if (!content.empty()) {
         section->setContent(content);
     }
@@ -155,6 +157,32 @@ void SectionManager::addSection(const std::string& header, const std::string& co
     
     section->show();
     sections_.push_back(std::move(section));
+}
+
+void SectionManager::deleteSection(TextSection* section) {
+    if (!section) return;
+    
+    // Find the section in our vector
+    auto it = std::find_if(sections_.begin(), sections_.end(),
+                          [section](const std::unique_ptr<TextSection>& ptr) {
+                              return ptr.get() == section;
+                          });
+    
+    if (it != sections_.end()) {
+        // Remove widgets from containers
+        GtkWidget* container = (*it)->getContainer();
+        GtkWidget* order_button = (*it)->getOrderButton();
+        
+        if (container && gtk_widget_get_parent(container)) {
+            gtk_container_remove(GTK_CONTAINER(text_container_), container);
+        }
+        if (order_button && gtk_widget_get_parent(order_button)) {
+            gtk_container_remove(GTK_CONTAINER(order_box_), order_button);
+        }
+        
+        // Remove from vector (this will destroy the unique_ptr and the object)
+        sections_.erase(it);
+    }
 }
 
 void SectionManager::clearAll() {
@@ -246,6 +274,27 @@ std::string SectionManager::generateAsciiDoc(const std::string& title) const {
         for (const auto& section : sections_) {
             if (section->getContainer() == section_widget) {
                 std::string header = section->getHeader();
+                std::string headline = section->getHeadline();
+                int level = section->getHeadlineLevel();
+                
+                // Use headline if provided, otherwise use default
+                std::string section_title = headline.empty() ? "section headline" : headline;
+                
+                // Generate AsciiDoc heading based on level
+                std::string heading_marker;
+                switch (level) {
+                    case 1:
+                        heading_marker = "== ";  // Level 1 heading
+                        break;
+                    case 2:
+                        heading_marker = "=== ";  // Level 2 heading
+                        break;
+                    case 3:
+                        heading_marker = "==== ";  // Level 3 heading
+                        break;
+                    default:
+                        heading_marker = "=== ";  // Default to level 2
+                }
                 
                 // Navigate widget tree to find text view
                 GList* section_children = gtk_container_get_children(GTK_CONTAINER(section->getContainer()));
@@ -266,8 +315,8 @@ std::string SectionManager::generateAsciiDoc(const std::string& title) const {
                         gtk_text_buffer_get_bounds(buffer, &start, &end);
                         gchar* content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
                         
-                        // Write AsciiDoc section
-                        result += "== " + header + "\n\n";
+                        // Write AsciiDoc section with custom headline and level
+                        result += heading_marker + section_title + "\n\n";
                         result += std::string(content) + "\n\n";
                         
                         g_free(content);
@@ -287,6 +336,9 @@ bool SectionManager::saveToFile(const std::string& filepath) const {
     if (!file.is_open()) {
         return false;
     }
+    
+    // Save document title (stored separately by main window, so we don't save it here)
+    // The main window will need to handle this
     
     // Get sections in current order
     GList* text_children = gtk_container_get_children(GTK_CONTAINER(text_container_));
@@ -323,8 +375,13 @@ bool SectionManager::saveToFile(const std::string& filepath) const {
                         gtk_text_buffer_get_bounds(buffer, &start, &end);
                         gchar* content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
                         
+                        std::string headline = section->getHeadline();
+                        int level = section->getHeadlineLevel();
+                        
                         // Write section header
                         file << "[SECTION:" << header << "]\n";
+                        file << "[HEADLINE:" << headline << "]\n";
+                        file << "[LEVEL:" << level << "]\n";
                         // Write content
                         file << content << "\n";
                         file << "[END_SECTION]\n\n";
@@ -353,17 +410,37 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
     
     std::string line;
     std::string current_header;
+    std::string current_headline;
+    int current_level = 2;
     std::string current_content;
+    std::string document_title;
     bool in_section = false;
     
     while (std::getline(file, line)) {
-        if (line.find("[SECTION:") == 0) {
+        if (line.find("[DOCUMENT_TITLE:") == 0) {
+            // Extract document title (will be handled by main window)
+            size_t start = line.find(":") + 1;
+            size_t end = line.find("]");
+            document_title = line.substr(start, end - start);
+        } else if (line.find("[SECTION:") == 0) {
             // Extract header
             size_t start = line.find(":") + 1;
             size_t end = line.find("]");
             current_header = line.substr(start, end - start);
             current_content.clear();
+            current_headline.clear();
+            current_level = 2;
             in_section = true;
+        } else if (line.find("[HEADLINE:") == 0) {
+            // Extract headline
+            size_t start = line.find(":") + 1;
+            size_t end = line.find("]");
+            current_headline = line.substr(start, end - start);
+        } else if (line.find("[LEVEL:") == 0) {
+            // Extract level
+            size_t start = line.find(":") + 1;
+            size_t end = line.find("]");
+            current_level = std::stoi(line.substr(start, end - start));
         } else if (line == "[END_SECTION]") {
             if (in_section && !current_header.empty()) {
                 // Remove trailing newline if present
@@ -371,9 +448,16 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
                     current_content.pop_back();
                 }
                 addSection(current_header, current_content);
+                // Set headline and level for the last added section
+                if (!sections_.empty()) {
+                    sections_.back()->setHeadline(current_headline);
+                    sections_.back()->setHeadlineLevel(current_level);
+                }
             }
             in_section = false;
             current_header.clear();
+            current_headline.clear();
+            current_level = 2;
             current_content.clear();
         } else if (in_section) {
             current_content += line + "\n";
@@ -381,6 +465,7 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
     }
     
     file.close();
+    loaded_document_title_ = document_title;
     return true;
 }
 

@@ -15,6 +15,7 @@ public:
 
     // Section operations
     void addSection(const std::string& header, const std::string& content = std::string());
+    void deleteSection(TextSection* section);
     void clearAll();
     
     // Main section operations
@@ -25,6 +26,10 @@ public:
     // Getters
     int getSectionCount() const { return sections_.size(); }
     bool hasContent() const { return !sections_.empty(); }
+    std::string getLoadedDocumentTitle() const { return loaded_document_title_; }
+    TextSection* getSectionAt(size_t index) const { 
+        return (index < sections_.size()) ? sections_[index].get() : nullptr; 
+    }
     
     // Save/Load operations
     bool saveToFile(const std::string& filepath) const;
@@ -50,6 +55,7 @@ private:
     
     // Drag state
     GtkWidget* dragged_widget_;
+    std::string loaded_document_title_;
     gint dragged_source_index_;
     
     void createMainSection();
