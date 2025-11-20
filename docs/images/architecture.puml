@@ -1,0 +1,151 @@
+@startuml architecture
+skinparam classAttributeIconSize 0
+
+package "DocGen Application" {
+    
+    class main {
+        +main(argc, argv): int
+    }
+    
+    class MainWindow {
+        -window_: GtkWidget*
+        -main_vbox_: GtkWidget*
+        -section_manager_: unique_ptr<SectionManager>
+        -text_viewer_: TextViewer
+        -has_unsaved_changes_: bool
+        -current_set_file_: string
+        
+        +MainWindow(app: GtkApplication*)
+        +show(): void
+        +getWindow(): GtkWindow*
+        -createMenuBar(): void
+        -createUI(): void
+        -updateTitle(): void
+        -promptSaveIfNeeded(): bool
+        
+        {static} -onAddSection(item, user_data)
+        {static} -onSaveSet(item, user_data)
+        {static} -onOpenSet(item, user_data)
+        {static} -onCreateDoc(item, user_data)
+        {static} -onClearAll(item, user_data)
+        {static} -onQuit(item, user_data)
+        {static} -onAbout(item, user_data)
+    }
+    
+    class SectionManager {
+        -text_container_: GtkWidget*
+        -order_box_: GtkWidget*
+        -sections_: vector<unique_ptr<TextSection>>
+        -section_counter_: int
+        -main_section_: GtkWidget*
+        -main_order_button_: GtkWidget*
+        -main_text_view_: GtkWidget*
+        -dragged_widget_: GtkWidget*
+        -dragged_source_index_: gint
+        
+        +SectionManager(text_container, order_box)
+        +addSection(header, content): void
+        +clearAll(): void
+        +showMainSection(): void
+        +hideMainSection(): void
+        +setMainSectionContent(content): void
+        +getSectionCount(): int
+        +hasContent(): bool
+        +saveToFile(filepath): bool
+        +loadFromFile(filepath): bool
+        +getSectionsInOrder(): vector<pair<string,string>>
+        +generateAsciiDoc(title): string
+        
+        -createMainSection(): void
+        -setupDragAndDrop(order_button, position): void
+        
+        {static} -onDragBegin(widget, context, user_data)
+        {static} -onDragEnd(widget, context, user_data)
+        {static} -onDragMotion(widget, context, x, y, time, user_data)
+        {static} -onDragLeave(widget, context, time, user_data)
+        {static} -onDragDataGet(widget, context, selection_data, info, time, user_data)
+        {static} -onDragDataReceived(widget, context, x, y, selection_data, info, time, user_data)
+        {static} -onOrderBoxDragMotion(widget, context, x, y, time, user_data)
+    }
+    
+    class TextSection {
+        -section_id_: int
+        -container_: GtkWidget*
+        -header_entry_: GtkWidget*
+        -header_display_: GtkWidget*
+        -text_view_: GtkWidget*
+        -scrolled_window_: GtkWidget*
+        -order_button_: GtkWidget*
+        -order_label_: GtkWidget*
+        
+        +TextSection(position, default_header)
+        +show(): void
+        +hide(): void
+        +setContent(content): void
+        +getContent(): string
+        +setHeader(header): void
+        +getHeader(): string
+        +getContainer(): GtkWidget*
+        +getOrderButton(): GtkWidget*
+        
+        -createUI(): void
+    }
+    
+    class TextViewer {
+        +loadFile(filepath): string
+        +fileExists(filepath): bool
+    }
+    
+    package "GTK3 Framework" {
+        class GtkApplication
+        class GtkWidget
+        class GtkWindow
+    }
+    
+    main --> MainWindow : creates
+    MainWindow *-- SectionManager : contains
+    MainWindow *-- TextViewer : contains
+    MainWindow --> GtkApplication : uses
+    MainWindow --> GtkWidget : manages
+    
+    SectionManager *-- "*" TextSection : manages
+    SectionManager --> GtkWidget : manages
+    
+    TextSection --> GtkWidget : creates
+    
+    note right of MainWindow
+        **Responsibilities:**
+        - Application window management
+        - Menu bar (File, Edit, About)
+        - Save/Load section sets
+        - AsciiDoc document generation
+        - Window title updates
+        - Unsaved changes prompts
+    end note
+    
+    note right of SectionManager
+        **Responsibilities:**
+        - Section collection management
+        - Drag-and-drop reordering
+        - Set persistence (.txt format)
+        - AsciiDoc generation
+        - Order synchronization
+    end note
+    
+    note right of TextSection
+        **Responsibilities:**
+        - Individual section widget
+        - Header and content display
+        - Order button for drag-drop
+        - Self-contained UI management
+    end note
+    
+    note right of TextViewer
+        **Responsibilities:**
+        - File I/O operations
+        - File existence checking
+        - Simple utility class
+    end note
+}
+
+@enduml
