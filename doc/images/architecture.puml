@@ -2,39 +2,49 @@
 skinparam classAttributeIconSize 0
 
 package "DocGen Application" {
-    
+
     class main {
         +main(argc, argv): int
     }
-    
+
     class MainWindow {
+        // Window & Containers
         -window_: GtkWidget*
         -main_vbox_: GtkWidget*
+        // Components
         -section_manager_: unique_ptr<SectionManager>
         -text_viewer_: TextViewer
+        -document_title_entry_: GtkWidget*
+        -preview_web_view_: WebKitWebView*
+        // State
         -has_unsaved_changes_: bool
         -current_set_file_: string
-        
         +MainWindow(app: GtkApplication*)
         +show(): void
         +getWindow(): GtkWindow*
+        +getDocumentTitle(): string
         -createMenuBar(): void
         -createUI(): void
-        -updateTitle(): void
+        -updatePreview(): void
+        -convertAsciiDocToHTML(asciidoc): string
         -promptSaveIfNeeded(): bool
-        
-        {static} -onAddSection(item, user_data)
-        {static} -onSaveSet(item, user_data)
-        {static} -onOpenSet(item, user_data)
-        {static} -onCreateDoc(item, user_data)
-        {static} -onClearAll(item, user_data)
-        {static} -onQuit(item, user_data)
-        {static} -onAbout(item, user_data)
+        -updateTitle(): void
+        // Static menu callbacks
+        {static} onAddSection(item, user_data)
+        {static} onSaveSet(item, user_data)
+        {static} onOpenSet(item, user_data)
+        {static} onCreateDoc(item, user_data)
+        {static} onCreateMarkdown(item, user_data)
+        {static} onClearAll(item, user_data)
+        {static} onQuit(item, user_data)
+        {static} onAbout(item, user_data)
     }
-    
+
     class SectionManager {
+        // Containers
         -text_container_: GtkWidget*
         -order_box_: GtkWidget*
+        // Section Data
         -sections_: vector<unique_ptr<TextSection>>
         -section_counter_: int
         -main_section_: GtkWidget*
@@ -42,104 +52,142 @@ package "DocGen Application" {
         -main_text_view_: GtkWidget*
         -dragged_widget_: GtkWidget*
         -dragged_source_index_: gint
-        
+        -loaded_document_title_: string
+        // Callbacks
+        -on_content_changed_: function<void()>
         +SectionManager(text_container, order_box)
         +addSection(header, content): void
+        +deleteSection(section): void
         +clearAll(): void
         +showMainSection(): void
         +hideMainSection(): void
         +setMainSectionContent(content): void
         +getSectionCount(): int
         +hasContent(): bool
+        +getLoadedDocumentTitle(): string
+        +getSectionAt(index): TextSection*
         +saveToFile(filepath): bool
         +loadFromFile(filepath): bool
         +getSectionsInOrder(): vector<pair<string,string>>
         +generateAsciiDoc(title): string
-        
+        +generateMarkdown(title): string
         -createMainSection(): void
         -setupDragAndDrop(order_button, position): void
-        
-        {static} -onDragBegin(widget, context, user_data)
-        {static} -onDragEnd(widget, context, user_data)
-        {static} -onDragMotion(widget, context, x, y, time, user_data)
-        {static} -onDragLeave(widget, context, time, user_data)
-        {static} -onDragDataGet(widget, context, selection_data, info, time, user_data)
-        {static} -onDragDataReceived(widget, context, x, y, selection_data, info, time, user_data)
-        {static} -onOrderBoxDragMotion(widget, context, x, y, time, user_data)
+        // Static drag-drop callbacks
+        {static} onDragBegin(...)
+        {static} onDragEnd(...)
+        {static} onDragMotion(...)
+        {static} onDragLeave(...)
+        {static} onDragDataGet(...)
+        {static} onDragDataReceived(...)
+        {static} onOrderBoxDragMotion(...)
     }
-    
+
     class TextSection {
-        -section_id_: int
+        // Data
+        -position_: int
+        -header_text_: string
+        -manager_: SectionManager*
+        // Widgets
         -container_: GtkWidget*
-        -header_entry_: GtkWidget*
-        -header_display_: GtkWidget*
+        -delete_button_: GtkWidget*
+        -header_label_: GtkWidget*
         -text_view_: GtkWidget*
         -scrolled_window_: GtkWidget*
         -order_button_: GtkWidget*
         -order_label_: GtkWidget*
-        
+        -order_level_label_: GtkWidget*
+        -radio_group_box_: GtkWidget*
+        -radio_i_: GtkWidget*
+        -radio_ii_: GtkWidget*
+        -radio_iii_: GtkWidget*
+        -headline_entry_: GtkWidget*
+        -type_text_: GtkWidget*
+        -type_quote_: GtkWidget*
+        -type_box_: GtkWidget*
         +TextSection(position, default_header)
-        +show(): void
-        +hide(): void
-        +setContent(content): void
-        +getContent(): string
-        +setHeader(header): void
-        +getHeader(): string
         +getContainer(): GtkWidget*
         +getOrderButton(): GtkWidget*
-        
-        -createUI(): void
+        +getPosition(): int
+        +getHeader(): string
+        +getHeadline(): string
+        +getHeadlineLevel(): int
+        +getSectionType(): string
+        +setHeader(header): void
+        +setContent(content): void
+        +setPosition(position): void
+        +setHeadline(headline): void
+        +setHeadlineLevel(level): void
+        +setSectionType(type): void
+        +setManager(manager): void
+        +show(): void
+        +hide(): void
+        -createUI(default_header): void
+        // Static callbacks
+        {static} onRadioChanged(...)
+        {static} onTypeRadioChanged(...)
+        {static} onDeleteClicked(...)
+        {static} onHeadlineChanged(...)
+        -updateLevelIndicator(): void
     }
-    
+
     class TextViewer {
         +loadFile(filepath): string
         +fileExists(filepath): bool
     }
-    
-    package "GTK3 Framework" {
+
+    package "GTK3 & WebKit2GTK" {
         class GtkApplication
         class GtkWidget
         class GtkWindow
+        class WebKitWebView
     }
-    
+
     main --> MainWindow : creates
     MainWindow *-- SectionManager : contains
     MainWindow *-- TextViewer : contains
     MainWindow --> GtkApplication : uses
     MainWindow --> GtkWidget : manages
-    
+    MainWindow --> WebKitWebView : manages
+
     SectionManager *-- "*" TextSection : manages
     SectionManager --> GtkWidget : manages
-    
+
     TextSection --> GtkWidget : creates
-    
+    TextSection --> SectionManager : notifies
+
+    TextViewer --> fileExists
+    TextViewer --> loadFile
+
     note right of MainWindow
         **Responsibilities:**
         - Application window management
         - Menu bar (File, Edit, About)
         - Save/Load section sets
-        - AsciiDoc document generation
+        - AsciiDoc/Markdown document generation
         - Window title updates
         - Unsaved changes prompts
+        - Preview rendering (WebKitWebView)
     end note
-    
+
     note right of SectionManager
         **Responsibilities:**
         - Section collection management
         - Drag-and-drop reordering
-        - Set persistence (.txt format)
-        - AsciiDoc generation
+        - Set persistence (.docgenset format)
+        - AsciiDoc/Markdown generation
         - Order synchronization
     end note
-    
+
     note right of TextSection
         **Responsibilities:**
         - Individual section widget
-        - Header and content display
+        - Header, headline, and content display
         - Order button for drag-drop
         - Self-contained UI management
+        - Notifies SectionManager on changes
     end note
-    
+
     note right of TextViewer
         **Responsibilities:**
         - File I/O operations
@@ -147,5 +195,4 @@ package "DocGen Application" {
         - Simple utility class
     end note
 }
-
 @enduml

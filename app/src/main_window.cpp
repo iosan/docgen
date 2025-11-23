@@ -1,14 +1,22 @@
 #include "main_window.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 MainWindow::MainWindow(GtkApplication* app)
     : window_(nullptr), main_vbox_(nullptr), section_manager_(nullptr),
-      document_title_entry_(nullptr), has_unsaved_changes_(false), current_set_file_("") {
+      document_title_entry_(nullptr), preview_web_view_(nullptr),
+      has_unsaved_changes_(false), current_set_file_("") {
     
     window_ = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(window_), "Text File Viewer");
+    gtk_window_set_title(GTK_WINDOW(window_), "Doc Generator");
     gtk_window_set_default_size(GTK_WINDOW(window_), 800, 600);
+    
+    // Set minimum window size
+    GdkGeometry hints;
+    hints.min_width = 600;
+    hints.min_height = 400;
+    gtk_window_set_geometry_hints(GTK_WINDOW(window_), NULL, &hints, GDK_HINT_MIN_SIZE);
 
     main_vbox_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(window_), main_vbox_);
@@ -22,7 +30,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::updateTitle() {
-    std::string title = "Text File Viewer";
+    std::string title = "Doc Generator";
     if (!current_set_file_.empty()) {
         // Extract just the filename from the path
         size_t last_slash = current_set_file_.find_last_of("/\\");
@@ -73,6 +81,10 @@ void MainWindow::createMenuBar() {
     GtkWidget* create_doc_item = gtk_menu_item_new_with_label("Create AsciiDoc...");
     g_signal_connect(create_doc_item, "activate", G_CALLBACK(onCreateDoc), this);
     gtk_menu_shell_append(GTK_MENU_SHELL(edit_menu), create_doc_item);
+
+    GtkWidget* create_md_item = gtk_menu_item_new_with_label("Create Markdown...");
+    g_signal_connect(create_md_item, "activate", G_CALLBACK(onCreateMarkdown), this);
+    gtk_menu_shell_append(GTK_MENU_SHELL(edit_menu), create_md_item);
 
     gtk_menu_shell_append(GTK_MENU_SHELL(edit_menu), gtk_separator_menu_item_new());
 
@@ -188,6 +200,9 @@ void MainWindow::createUI() {
         "  padding: 4px; "
         "  font-family: monospace; "
         "  font-size: 0.85em; "
+        "}"
+        "#preview-frame textview { "
+        "  font-size: 0.3em; "
         "}";
     
     gtk_css_provider_load_from_data(css_provider, css_data, -1, NULL);
@@ -258,13 +273,13 @@ void MainWindow::createUI() {
     gtk_widget_set_margin_top(order_box, 8);
     gtk_widget_set_margin_bottom(order_box, 8);
     gtk_container_add(GTK_CONTAINER(order_scrolled), order_box);
-    gtk_box_pack_start(GTK_BOX(order_label_box), order_scrolled, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(order_label_box), order_scrolled, TRUE, TRUE, 0);
     
-    // Document title input box
-    GtkWidget* title_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    // Document title input box at bottom
+    GtkWidget* title_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_widget_set_margin_start(title_box, 12);
     gtk_widget_set_margin_end(title_box, 12);
-    gtk_widget_set_margin_top(title_box, 4);
+    gtk_widget_set_margin_top(title_box, 8);
     gtk_widget_set_margin_bottom(title_box, 8);
     
     GtkWidget* title_label = gtk_label_new("Main Document Title:");
@@ -276,13 +291,69 @@ void MainWindow::createUI() {
     gtk_widget_set_hexpand(document_title_entry_, TRUE);
     gtk_box_pack_start(GTK_BOX(title_box), document_title_entry_, TRUE, TRUE, 0);
     
-    gtk_box_pack_start(GTK_BOX(order_label_box), title_box, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(order_label_box), title_box, FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(order_frame), order_label_box);
     gtk_widget_set_margin_start(order_frame, 12);
-    gtk_widget_set_margin_end(order_frame, 12);
+    gtk_widget_set_margin_end(order_frame, 6);
     gtk_widget_set_margin_top(order_frame, 12);
     gtk_widget_set_margin_bottom(order_frame, 8);
-    gtk_box_pack_start(GTK_BOX(main_vbox_), order_frame, FALSE, FALSE, 0);
+    
+    // Create horizontal box to hold order frame and preview frame side by side
+    GtkWidget* order_preview_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_box_pack_start(GTK_BOX(order_preview_hbox), order_frame, TRUE, TRUE, 0);
+    
+    // Preview frame - square aspect ratio
+    GtkWidget* preview_frame = gtk_frame_new(NULL);
+    gtk_widget_set_name(preview_frame, "preview-frame");
+    GtkStyleContext* preview_frame_context = gtk_widget_get_style_context(preview_frame);
+    gtk_style_context_add_class(preview_frame_context, "order-frame");
+    
+    GtkWidget* preview_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget* preview_title = gtk_label_new("Preview");
+    PangoAttrList* preview_title_attrs = pango_attr_list_new();
+    pango_attr_list_insert(preview_title_attrs, pango_attr_weight_new(PANGO_WEIGHT_SEMIBOLD));
+    pango_attr_list_insert(preview_title_attrs, pango_attr_scale_new(0.9));
+    gtk_label_set_attributes(GTK_LABEL(preview_title), preview_title_attrs);
+    pango_attr_list_unref(preview_title_attrs);
+    gtk_widget_set_halign(preview_title, GTK_ALIGN_START);
+    gtk_widget_set_margin_start(preview_title, 12);
+    gtk_widget_set_margin_end(preview_title, 12);
+    gtk_widget_set_margin_top(preview_title, 8);
+    gtk_widget_set_margin_bottom(preview_title, 4);
+    gtk_box_pack_start(GTK_BOX(preview_vbox), preview_title, FALSE, FALSE, 0);
+    
+    // Preview scrolled window - calculate square size based on available height
+    GtkWidget* preview_scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(preview_scrolled),
+                                   GTK_POLICY_AUTOMATIC,
+                                   GTK_POLICY_AUTOMATIC);
+    // Set width equal to height (approx 140px for the content area + margins/title)
+    gtk_widget_set_size_request(preview_scrolled, 140, 140);
+    gtk_widget_set_margin_start(preview_scrolled, 12);
+    gtk_widget_set_margin_end(preview_scrolled, 12);
+    gtk_widget_set_margin_bottom(preview_scrolled, 8);
+    
+    // Preview web view for HTML rendering
+    preview_web_view_ = WEBKIT_WEB_VIEW(webkit_web_view_new());
+    webkit_web_view_set_editable(preview_web_view_, FALSE);
+    gtk_container_add(GTK_CONTAINER(preview_scrolled), GTK_WIDGET(preview_web_view_));
+    
+    gtk_box_pack_start(GTK_BOX(preview_vbox), preview_scrolled, TRUE, TRUE, 0);
+    gtk_container_add(GTK_CONTAINER(preview_frame), preview_vbox);
+    gtk_widget_set_margin_start(preview_frame, 6);
+    gtk_widget_set_margin_end(preview_frame, 12);
+    gtk_widget_set_margin_top(preview_frame, 12);
+    gtk_widget_set_margin_bottom(preview_frame, 8);
+    gtk_widget_set_size_request(preview_frame, 300, -1);
+    
+    gtk_box_pack_start(GTK_BOX(order_preview_hbox), preview_frame, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(main_vbox_), order_preview_hbox, FALSE, FALSE, 0);
+    
+    // Connect signal to update preview when document title changes
+    g_signal_connect(document_title_entry_, "changed", G_CALLBACK(+[](GtkEntry*, gpointer data) {
+        MainWindow* window = static_cast<MainWindow*>(data);
+        window->updatePreview();
+    }), this);
 
     // Frame for text sections
     GtkWidget* text_sections_frame = gtk_frame_new(NULL);
@@ -328,6 +399,11 @@ void MainWindow::createUI() {
 
     // Create section manager
     section_manager_ = std::make_unique<SectionManager>(text_container, order_box);
+    
+    // Set callback to update preview when content changes
+    section_manager_->setOnContentChangedCallback([this]() {
+        updatePreview();
+    });
 }
 
 void MainWindow::show() {
@@ -361,6 +437,7 @@ void MainWindow::onAddSection(GtkMenuItem* item, gpointer user_data) {
             std::string header = basename;
             window->section_manager_->addSection(header, content);
             window->has_unsaved_changes_ = true;
+            window->updatePreview();
         } catch (const std::exception& e) {
             std::cerr << "Error: " << e.what() << std::endl;
             GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
@@ -517,6 +594,143 @@ void MainWindow::onCreateDoc(GtkMenuItem* item, gpointer user_data) {
     }
 }
 
+void MainWindow::onCreateMarkdown(GtkMenuItem* item, gpointer user_data) {
+    (void)item;
+    MainWindow* window = static_cast<MainWindow*>(user_data);
+    
+    // First, ensure the set is saved
+    if (window->current_set_file_.empty() || window->has_unsaved_changes_) {
+        // Prompt to save the set first
+        GtkWidget* dialog = gtk_file_chooser_dialog_new("Save Section Set",
+                                                         window->getWindow(),
+                                                         GTK_FILE_CHOOSER_ACTION_SAVE,
+                                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                                         "_Save", GTK_RESPONSE_ACCEPT,
+                                                         NULL);
+        
+        if (!window->current_set_file_.empty()) {
+            gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), window->current_set_file_.c_str());
+        }
+        
+        gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+        gchar* filename = NULL;
+        
+        if (response == GTK_RESPONSE_ACCEPT) {
+            filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        }
+        
+        // Destroy dialog immediately after getting response
+        gtk_widget_destroy(dialog);
+        
+        if (response == GTK_RESPONSE_ACCEPT && filename) {
+            if (window->section_manager_->saveToFile(filename)) {
+                window->current_set_file_ = filename;
+                window->has_unsaved_changes_ = false;
+                window->updateTitle();
+            } else {
+                g_free(filename);
+                
+                GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
+                                                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                                 GTK_MESSAGE_ERROR,
+                                                                 GTK_BUTTONS_OK,
+                                                                 "Failed to save section set.");
+                gtk_dialog_run(GTK_DIALOG(error_dialog));
+                gtk_widget_destroy(error_dialog);
+                return;
+            }
+            
+            g_free(filename);
+        } else {
+            return; // User cancelled
+        }
+    }
+    
+    // Now create the Markdown file
+    GtkWidget* doc_dialog = gtk_file_chooser_dialog_new("Create Markdown",
+                                                         window->getWindow(),
+                                                         GTK_FILE_CHOOSER_ACTION_SAVE,
+                                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                                         "_Save", GTK_RESPONSE_ACCEPT,
+                                                         NULL);
+    
+    // Add file filter for .md files
+    GtkFileFilter* filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(filter, "Markdown files (*.md)");
+    gtk_file_filter_add_pattern(filter, "*.md");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(doc_dialog), filter);
+    
+    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(doc_dialog), TRUE);
+    
+    // Set default filename based on set filename, replacing .docgenset with .md
+    if (!window->current_set_file_.empty()) {
+        // Extract directory and filename
+        size_t last_slash = window->current_set_file_.find_last_of("/\\");
+        std::string directory;
+        std::string filename;
+        
+        if (last_slash != std::string::npos) {
+            directory = window->current_set_file_.substr(0, last_slash);
+            filename = window->current_set_file_.substr(last_slash + 1);
+        } else {
+            filename = window->current_set_file_;
+        }
+        
+        // Replace .docgenset extension with .md, or add .md if not present
+        if (filename.length() >= 10 && 
+            filename.substr(filename.length() - 10) == ".docgenset") {
+            filename = filename.substr(0, filename.length() - 10) + ".md";
+        } else if (filename.length() < 3 || 
+                   filename.substr(filename.length() - 3) != ".md") {
+            // Only append .md if it doesn't already have it
+            filename += ".md";
+        }
+        
+        // Set directory if we have one
+        if (!directory.empty()) {
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(doc_dialog), directory.c_str());
+        }
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(doc_dialog), filename.c_str());
+    } else {
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(doc_dialog), "document.md");
+    }
+    
+    gint doc_response = gtk_dialog_run(GTK_DIALOG(doc_dialog));
+    gchar* doc_filename = NULL;
+    
+    if (doc_response == GTK_RESPONSE_ACCEPT) {
+        doc_filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(doc_dialog));
+    }
+    
+    // Destroy dialog immediately after getting response
+    gtk_widget_destroy(doc_dialog);
+    
+    if (doc_response == GTK_RESPONSE_ACCEPT && doc_filename) {
+        // Get document title from input box
+        std::string doc_title = window->getDocumentTitle();
+        
+        // Generate Markdown content
+        std::string markdown_content = window->section_manager_->generateMarkdown(doc_title);
+        
+        // Write to file
+        std::ofstream doc_file(doc_filename);
+        if (doc_file.is_open()) {
+            doc_file << markdown_content;
+            doc_file.close();
+        } else {
+            GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
+                                                             GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                             GTK_MESSAGE_ERROR,
+                                                             GTK_BUTTONS_OK,
+                                                             "Failed to create Markdown file.");
+            gtk_dialog_run(GTK_DIALOG(error_dialog));
+            gtk_widget_destroy(error_dialog);
+        }
+        
+        g_free(doc_filename);
+    }
+}
+
 void MainWindow::onClearAll(GtkMenuItem* item, gpointer user_data) {
     (void)item;
     MainWindow* window = static_cast<MainWindow*>(user_data);
@@ -525,6 +739,7 @@ void MainWindow::onClearAll(GtkMenuItem* item, gpointer user_data) {
     gtk_entry_set_text(GTK_ENTRY(window->document_title_entry_), "");
     window->has_unsaved_changes_ = false;
     window->current_set_file_ = "";
+    window->updatePreview();
 }
 
 void MainWindow::onQuit(GtkMenuItem* item, gpointer user_data) {
@@ -539,7 +754,7 @@ void MainWindow::onAbout(GtkMenuItem* item, gpointer user_data) {
     MainWindow* window = static_cast<MainWindow*>(user_data);
     
     GtkWidget* about_dialog = gtk_about_dialog_new();
-    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about_dialog), "Text File Viewer");
+    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about_dialog), "Doc Generator");
     gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about_dialog), "1.0");
     gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(about_dialog),
                                    "A simple text file viewer with drag-and-drop section ordering");
@@ -633,6 +848,7 @@ void MainWindow::onOpenSet(GtkMenuItem* item, gpointer user_data) {
             if (!doc_title.empty()) {
                 gtk_entry_set_text(GTK_ENTRY(window->document_title_entry_), doc_title.c_str());
             }
+            window->updatePreview();
         } else {
             GtkWidget* error_dialog = gtk_message_dialog_new(window->getWindow(),
                                                              GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -680,4 +896,131 @@ bool MainWindow::promptSaveIfNeeded() {
         // Cancel operation
         return false;
     }
+}
+
+std::string MainWindow::convertAsciiDocToHTML(const std::string& markdown) {
+    std::string html = R"(
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
+body { font-family: sans-serif; padding: 10px; line-height: 1.6; transform: scale(0.2); transform-origin: top left; width: 460%; max-width: 460%; word-wrap: break-word; overflow-wrap: break-word; box-sizing: border-box; }
+h1 { font-size: 2em; margin-top: 0; }
+h2 { font-size: 1.5em; margin-top: 1em; }
+h3 { font-size: 1.25em; margin-top: 0.8em; }
+h4 { font-size: 1.1em; margin-top: 0.6em; }
+blockquote { border-left: 4px solid #ddd; padding-left: 15px; color: #666; margin: 1em 0; word-wrap: break-word; }
+pre { background: #f5f5f5; border: 1px solid #ddd; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; max-width: 100%; }
+code { background: #f0f0f0; padding: 2px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+)";
+    
+    std::istringstream stream(markdown);
+    std::string line;
+    bool in_quote = false;
+    bool in_code = false;
+    bool in_paragraph = false;
+    
+    while (std::getline(stream, line)) {
+        // Code block
+        if (line.substr(0, 3) == "```") {
+            if (!in_code) {
+                if (in_paragraph) { html += "</p>\n"; in_paragraph = false; }
+                html += "<pre><code>";
+                in_code = true;
+            } else {
+                html += "</code></pre>\n";
+                in_code = false;
+            }
+            continue;
+        }
+        
+        if (in_code) {
+            html += line + "\n";
+            continue;
+        }
+        
+        // Document title (# Title)
+        if (line.substr(0, 2) == "# ") {
+            if (in_paragraph) { html += "</p>\n"; in_paragraph = false; }
+            html += "<h1>" + line.substr(2) + "</h1>\n";
+        }
+        // Level 1 heading (## Heading)
+        else if (line.substr(0, 3) == "## ") {
+            if (in_paragraph) { html += "</p>\n"; in_paragraph = false; }
+            html += "<h2>" + line.substr(3) + "</h2>\n";
+        }
+        // Level 2 heading (### Heading)
+        else if (line.substr(0, 4) == "### ") {
+            if (in_paragraph) { html += "</p>\n"; in_paragraph = false; }
+            html += "<h3>" + line.substr(4) + "</h3>\n";
+        }
+        // Level 3 heading (#### Heading)
+        else if (line.substr(0, 5) == "#### ") {
+            if (in_paragraph) { html += "</p>\n"; in_paragraph = false; }
+            html += "<h4>" + line.substr(5) + "</h4>\n";
+        }
+        // Blockquote (> text)
+        else if (line.substr(0, 2) == "> ") {
+            if (!in_quote) {
+                if (in_paragraph) { html += "</p>\n"; in_paragraph = false; }
+                html += "<blockquote>";
+                in_quote = true;
+            }
+            html += line.substr(2) + "<br>\n";
+        }
+        // Empty line
+        else if (line.empty()) {
+            if (in_quote) {
+                html += "</blockquote>\n";
+                in_quote = false;
+            }
+            if (in_paragraph) {
+                html += "</p>\n";
+                in_paragraph = false;
+            }
+        }
+        // Normal text
+        else {
+            if (in_quote) {
+                html += "</blockquote>\n";
+                in_quote = false;
+            }
+            if (!in_paragraph) {
+                html += "<p>";
+                in_paragraph = true;
+            }
+            html += line + " ";
+        }
+    }
+    
+    if (in_paragraph) html += "</p>\n";
+    if (in_quote) html += "</blockquote>\n";
+    if (in_code) html += "</code></pre>\n";
+    
+    html += "</body></html>";
+    return html;
+}
+
+void MainWindow::updatePreview() {
+    if (!preview_web_view_ || !section_manager_) {
+        return;
+    }
+    
+    // Generate Markdown content
+    std::string markdown_content = section_manager_->generateMarkdown(getDocumentTitle());
+    
+    // Convert to HTML for rendering
+    std::string html_content = convertAsciiDocToHTML(markdown_content);
+    
+    // Load HTML content into WebView
+    webkit_web_view_load_html(preview_web_view_, html_content.c_str(), nullptr);
+}
+
+GtkWindow* MainWindow::getWindow() const {
+    return GTK_WINDOW(window_);
 }
