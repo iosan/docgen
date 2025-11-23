@@ -1,3 +1,10 @@
+// =====================
+// SectionManager.h
+// =====================
+// Manages all TextSection objects and document operations.
+// Handles section ordering, saving/loading, and content generation.
+// =====================
+
 #ifndef SECTION_MANAGER_H
 #define SECTION_MANAGER_H
 
@@ -5,41 +12,46 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <functional>
 
 class TextSection;
 
 class SectionManager {
 public:
+    // ----- Construction & Destruction -----
     SectionManager(GtkWidget* text_container, GtkWidget* order_box);
     ~SectionManager();
 
-    // Section operations
+    // ----- Content Change Callbacks -----
+    void setOnContentChangedCallback(std::function<void()> callback);
+    void notifyContentChanged();
+
+    // ----- Section Operations -----
     void addSection(const std::string& header, const std::string& content = std::string());
     void deleteSection(TextSection* section);
     void clearAll();
-    
-    // Main section operations
+
+    // ----- Main Section Operations -----
     void showMainSection();
     void hideMainSection();
     void setMainSectionContent(const std::string& content);
-    
-    // Getters
-    int getSectionCount() const { return sections_.size(); }
-    bool hasContent() const { return !sections_.empty(); }
-    std::string getLoadedDocumentTitle() const { return loaded_document_title_; }
-    TextSection* getSectionAt(size_t index) const { 
-        return (index < sections_.size()) ? sections_[index].get() : nullptr; 
-    }
-    
-    // Save/Load operations
+
+    // ----- Getters -----
+    int getSectionCount() const;
+    bool hasContent() const;
+    std::string getLoadedDocumentTitle() const;
+    TextSection* getSectionAt(size_t index) const;
+
+    // ----- Save/Load Operations -----
     bool saveToFile(const std::string& filepath) const;
     bool loadFromFile(const std::string& filepath);
-    
-    // Get section data for current order
+
+    // ----- Section Data Access -----
     std::vector<std::pair<std::string, std::string>> getSectionsInOrder() const;
-    
-    // Generate AsciiDoc content
+
+    // ----- Document Generation -----
     std::string generateAsciiDoc(const std::string& title = "") const;
+    std::string generateMarkdown(const std::string& title = "") const;
 
 private:
     GtkWidget* text_container_;
@@ -57,6 +69,9 @@ private:
     GtkWidget* dragged_widget_;
     std::string loaded_document_title_;
     gint dragged_source_index_;
+    
+    // Callback for content changes
+    std::function<void()> on_content_changed_;
     
     void createMainSection();
     void setupDragAndDrop(GtkWidget* order_button, int position);

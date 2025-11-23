@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include <sstream>
 
 static GtkTargetEntry target_list[] = {
     { (gchar*)"GTK_LIST_BOX_ROW", GTK_TARGET_SAME_APP, 0 }
@@ -157,6 +158,11 @@ void SectionManager::addSection(const std::string& header, const std::string& co
     
     section->show();
     sections_.push_back(std::move(section));
+    
+    // Notify content changed
+    if (on_content_changed_) {
+        on_content_changed_();
+    }
 }
 
 void SectionManager::deleteSection(TextSection* section) {
@@ -182,6 +188,11 @@ void SectionManager::deleteSection(TextSection* section) {
         
         // Remove from vector (this will destroy the unique_ptr and the object)
         sections_.erase(it);
+        
+        // Notify content changed
+        if (on_content_changed_) {
+            on_content_changed_();
+        }
     }
 }
 
@@ -210,6 +221,11 @@ void SectionManager::clearAll() {
     
     // Reset counter
     section_counter_ = 0;
+    
+    // Notify content changed
+    if (on_content_changed_) {
+        on_content_changed_();
+    }
 }
 
 void SectionManager::showMainSection() {
@@ -278,25 +294,24 @@ std::string SectionManager::generateAsciiDoc(const std::string& title) const {
                 int level = section->getHeadlineLevel();
                 
                 // Use headline if provided, otherwise use default
-                std::string section_title = headline.empty() ? "section headline" : headline;
-                
-                // Generate AsciiDoc heading based on level
+                // Only output heading if headline is not empty
                 std::string heading_marker;
-                switch (level) {
-                    case 1:
-                        heading_marker = "== ";  // Level 1 heading
-                        break;
-                    case 2:
-                        heading_marker = "=== ";  // Level 2 heading
-                        break;
-                    case 3:
-                        heading_marker = "==== ";  // Level 3 heading
-                        break;
-                    default:
-                        heading_marker = "=== ";  // Default to level 2
+                if (!headline.empty()) {
+                    switch (level) {
+                        case 1:
+                            heading_marker = "== ";  // Level 1 heading
+                            break;
+                        case 2:
+                            heading_marker = "=== ";  // Level 2 heading
+                            break;
+                        case 3:
+                            heading_marker = "==== ";  // Level 3 heading
+                            break;
+                        default:
+                            heading_marker = "=== ";  // Default to level 2
+                    }
                 }
-                
-                // Navigate widget tree to find text view
+
                 GList* section_children = gtk_container_get_children(GTK_CONTAINER(section->getContainer()));
                 GtkWidget* scrolled = nullptr;
                 for (GList* sc = section_children; sc != NULL; sc = sc->next) {
@@ -306,7 +321,7 @@ std::string SectionManager::generateAsciiDoc(const std::string& title) const {
                     }
                 }
                 g_list_free(section_children);
-                
+
                 if (scrolled) {
                     GtkWidget* text_view_widget = gtk_bin_get_child(GTK_BIN(scrolled));
                     if (GTK_IS_TEXT_VIEW(text_view_widget)) {
@@ -314,11 +329,134 @@ std::string SectionManager::generateAsciiDoc(const std::string& title) const {
                         GtkTextIter start, end;
                         gtk_text_buffer_get_bounds(buffer, &start, &end);
                         gchar* content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
-                        
+
+                        std::string section_type = section->getSectionType();
+
                         // Write AsciiDoc section with custom headline and level
-                        result += heading_marker + section_title + "\n\n";
-                        result += std::string(content) + "\n\n";
-                        
+                        if (!headline.empty()) {
+                            result += heading_marker + headline + "\n\n";
+                        } else {
+                            result += heading_marker + header + "\n\n";
+                        }
+
+                        // Format content based on section type
+                        if (section_type == "quote") {
+                            // AsciiDoc quote block
+                            result += "[quote]\n____\n";
+                            result += std::string(content);
+                            result += "\n____\n\n";
+                        } else if (section_type == "box") {
+                            // AsciiDoc example/sidebar block
+                            result += "****\n";
+                            result += std::string(content);
+                            result += "\n****\n\n";
+                        } else {
+                            // Normal text
+                            result += std::string(content) + "\n\n";
+                        }
+
+                        g_free(content);
+                    }
+                }
+                break;
+            }
+        }
+    }
+    
+    g_list_free(text_children);
+    return result;
+}
+
+std::string SectionManager::generateMarkdown(const std::string& title) const {
+    std::string result;
+    
+    // Add document title if provided
+    if (!title.empty()) {
+        result = "# " + title + "\n\n";
+    }
+    
+    // Get sections in current order
+    GList* text_children = gtk_container_get_children(GTK_CONTAINER(text_container_));
+    
+    for (GList* l = text_children; l != NULL; l = l->next) {
+        GtkWidget* section_widget = GTK_WIDGET(l->data);
+        
+        // Skip main section
+        if (section_widget == main_section_) {
+            continue;
+        }
+        
+        // Find corresponding TextSection object
+        for (const auto& section : sections_) {
+            if (section->getContainer() == section_widget) {
+                std::string header = section->getHeader();
+                std::string headline = section->getHeadline();
+                int level = section->getHeadlineLevel();
+                
+                // Use headline if provided, otherwise use default
+                // Only output heading if headline is not empty
+                std::string heading_marker;
+                if (!headline.empty()) {
+                    switch (level) {
+                        case 1:
+                            heading_marker = "## ";  // Level 1 heading
+                            break;
+                        case 2:
+                            heading_marker = "### ";  // Level 2 heading
+                            break;
+                        case 3:
+                            heading_marker = "#### ";  // Level 3 heading
+                            break;
+                        default:
+                            heading_marker = "### ";  // Default to level 2
+                    }
+                }
+
+                GList* section_children = gtk_container_get_children(GTK_CONTAINER(section->getContainer()));
+                GtkWidget* scrolled = nullptr;
+                for (GList* sc = section_children; sc != NULL; sc = sc->next) {
+                    if (GTK_IS_SCROLLED_WINDOW(sc->data)) {
+                        scrolled = GTK_WIDGET(sc->data);
+                        break;
+                    }
+                }
+                g_list_free(section_children);
+
+                if (scrolled) {
+                    GtkWidget* text_view_widget = gtk_bin_get_child(GTK_BIN(scrolled));
+                    if (GTK_IS_TEXT_VIEW(text_view_widget)) {
+                        GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view_widget));
+                        GtkTextIter start, end;
+                        gtk_text_buffer_get_bounds(buffer, &start, &end);
+                        gchar* content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+
+                        std::string section_type = section->getSectionType();
+
+                        // Write Markdown section with custom headline and level
+                        if (!headline.empty()) {
+                            result += heading_marker + headline + "\n\n";
+                        }
+
+                        // Format content based on section type
+                        if (section_type == "quote") {
+                            // Markdown blockquote
+                            std::string quote_content = std::string(content);
+                            std::string line;
+                            std::istringstream stream(quote_content);
+                            while (std::getline(stream, line)) {
+                                result += "> " + line + "\n";
+                            }
+                            result += "\n";
+                        } else if (section_type == "box") {
+                            // Markdown doesn't have native boxes, use code block as alternative
+                            result += "```\n";
+                            result += std::string(content);
+                            result += "\n```\n\n";
+                        } else {
+                            // Normal text
+                            result += std::string(content) + "\n\n";
+                        }
+
                         g_free(content);
                     }
                 }
@@ -377,11 +515,13 @@ bool SectionManager::saveToFile(const std::string& filepath) const {
                         
                         std::string headline = section->getHeadline();
                         int level = section->getHeadlineLevel();
+                        std::string section_type = section->getSectionType();
                         
                         // Write section header
                         file << "[SECTION:" << header << "]\n";
                         file << "[HEADLINE:" << headline << "]\n";
                         file << "[LEVEL:" << level << "]\n";
+                        file << "[TYPE:" << section_type << "]\n";
                         // Write content
                         file << content << "\n";
                         file << "[END_SECTION]\n\n";
@@ -412,6 +552,7 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
     std::string current_header;
     std::string current_headline;
     int current_level = 2;
+    std::string current_type = "text";
     std::string current_content;
     std::string document_title;
     bool in_section = false;
@@ -430,6 +571,7 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
             current_content.clear();
             current_headline.clear();
             current_level = 2;
+            current_type = "text";
             in_section = true;
         } else if (line.find("[HEADLINE:") == 0) {
             // Extract headline
@@ -441,6 +583,11 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
             size_t start = line.find(":") + 1;
             size_t end = line.find("]");
             current_level = std::stoi(line.substr(start, end - start));
+        } else if (line.find("[TYPE:") == 0) {
+            // Extract type
+            size_t start = line.find(":") + 1;
+            size_t end = line.find("]");
+            current_type = line.substr(start, end - start);
         } else if (line == "[END_SECTION]") {
             if (in_section && !current_header.empty()) {
                 // Remove trailing newline if present
@@ -448,16 +595,18 @@ bool SectionManager::loadFromFile(const std::string& filepath) {
                     current_content.pop_back();
                 }
                 addSection(current_header, current_content);
-                // Set headline and level for the last added section
+                // Set headline, level, and type for the last added section
                 if (!sections_.empty()) {
                     sections_.back()->setHeadline(current_headline);
                     sections_.back()->setHeadlineLevel(current_level);
+                    sections_.back()->setSectionType(current_type);
                 }
             }
             in_section = false;
             current_header.clear();
             current_headline.clear();
             current_level = 2;
+            current_type = "text";
             current_content.clear();
         } else if (in_section) {
             current_content += line + "\n";
@@ -473,6 +622,43 @@ void SectionManager::setMainSectionContent(const std::string& content) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(main_text_view_));
     gtk_text_buffer_set_text(buffer, content.c_str(), -1);
     showMainSection();
+}
+
+// ----- Content Change Callbacks -----
+void SectionManager::setOnContentChangedCallback(std::function<void()> callback) {
+    on_content_changed_ = std::move(callback);
+}
+
+void SectionManager::notifyContentChanged() {
+    if (on_content_changed_) {
+        on_content_changed_();
+    }
+}
+
+std::string SectionManager::getLoadedDocumentTitle() const {
+    return loaded_document_title_;
+}
+
+int SectionManager::getSectionCount() const {
+    return static_cast<int>(sections_.size());
+}
+
+bool SectionManager::hasContent() const {
+    if (!sections_.empty()) return true;
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(main_text_view_));
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    gchar* content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+    bool has = content && *content;
+    g_free(content);
+    return has;
+}
+
+TextSection* SectionManager::getSectionAt(size_t index) const {
+    if (index < sections_.size()) {
+        return sections_[index].get();
+    }
+    return nullptr;
 }
 
 // Static callback implementations
@@ -623,6 +809,11 @@ void SectionManager::onDragEnd(GtkWidget* widget, GdkDragContext* context, gpoin
     
     manager->dragged_widget_ = nullptr;
     manager->dragged_source_index_ = -1;
+    
+    // Notify content changed after drag reordering
+    if (manager->on_content_changed_) {
+        manager->on_content_changed_();
+    }
 }
 
 gboolean SectionManager::onOrderBoxDragMotion(GtkWidget* widget, GdkDragContext* context,

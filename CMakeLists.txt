@@ -23,11 +23,12 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 # Include directories
-include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/app/include)
 
-# Find GTK3
+# Find GTK3 and WebKit2GTK
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+pkg_check_modules(WEBKIT2 REQUIRED webkit2gtk-4.1)
 
 # Generate GResource
 find_program(GLIB_COMPILE_RESOURCES NAMES glib-compile-resources REQUIRED)
@@ -49,27 +50,34 @@ add_custom_command(
 
 # Create a library for shared code
 add_library(text_viewer_lib
-    src/text_viewer.cpp
-    src/text_section.cpp
-    src/section_manager.cpp
-    src/main_window.cpp
+    app/src/text_viewer.cpp
+    app/src/text_section.cpp
+    app/src/section_manager.cpp
+    app/src/main_window.cpp
     ${GRESOURCE_C}
 )
 
 # Add executable
 add_executable(${PROJECT_NAME} 
-    src/main.cpp
+    app/src/main.cpp
 )
 
-# Include GTK directories
-include_directories(${GTK3_INCLUDE_DIRS})
-link_directories(${GTK3_LIBRARY_DIRS})
-add_definitions(${GTK3_CFLAGS_OTHER})
+# Include GTK and WebKit2 directories
+include_directories(${GTK3_INCLUDE_DIRS} ${WEBKIT2_INCLUDE_DIRS})
+link_directories(${GTK3_LIBRARY_DIRS} ${WEBKIT2_LIBRARY_DIRS})
+add_definitions(${GTK3_CFLAGS_OTHER} ${WEBKIT2_CFLAGS_OTHER})
 
-# Link the library and GTK to the executable
+# Link the library and GTK/WebKit2 to the executable
 target_link_libraries(${PROJECT_NAME} 
     text_viewer_lib
     ${GTK3_LIBRARIES}
+    ${WEBKIT2_LIBRARIES}
+)
+
+# Link WebKit2 to the library
+target_link_libraries(text_viewer_lib
+    ${GTK3_LIBRARIES}
+    ${WEBKIT2_LIBRARIES}
 )
 
 # Installation rules

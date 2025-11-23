@@ -2,7 +2,7 @@
 
 A GTK3-based document management application for creating and organizing text sections with drag-and-drop reordering and AsciiDoc export.
 
-![DocGen Application](docs/images/docgen_ss.png)
+![DocGen Application](doc/images/docgen_ss.png)
 
 ## Features
 
@@ -115,7 +115,7 @@ Content...
 
 ## Architecture
 
-![Architecture Diagram](docs/images/architecture.png)
+![Architecture Diagram](doc/images/architecture.png)
 
 ## Project Structure
 
@@ -135,7 +135,7 @@ docgen/
 │   └── text_viewer.h
 ├── tests/                   # Test files (Google Test)
 │   └── test_main.cpp
-├── docs/                    # Documentation
+├── doc/                    # Documentation
 │   ├── architecture.puml   # PlantUML diagram
 │   └── images/             # Images and watermark generator
 │       ├── architecture.png
@@ -150,7 +150,31 @@ docgen/
 
 ## Dependencies
 
-- GTK+ 3.0 (libgtk-3-dev)
+- GTK+ 3.0 (`libgtk-3-dev`)
+- WebKit2GTK (`libwebkit2gtk-4.1-dev`)
 - C++17 compiler
-- CMake 3.10+
-- Google Test (automatically fetched)
+- CMake >= 3.10
+- pkg-config
+- Google Test (automatically fetched by CMake)
+- lcov, genhtml (for coverage)
+
+### Install all dependencies (Ubuntu/Debian)
+
+You can use the provided script:
+
+```bash
+bash resources/install_deps.sh
+```
+
+Or install manually:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev lcov genhtml
+```
+
+## Documentation
+
+- Architecture documentation and diagrams are in the `doc/` folder.
+- See `doc/ARCHITECTURE.md` for class structure and relationships.
+- See `doc/images/architecture.png` for the UML diagram.
