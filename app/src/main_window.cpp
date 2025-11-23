@@ -9,7 +9,7 @@ MainWindow::MainWindow(GtkApplication* app)
       has_unsaved_changes_(false), current_set_file_("") {
     
     window_ = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(window_), "Text File Viewer");
+    gtk_window_set_title(GTK_WINDOW(window_), "Doc Generator");
     gtk_window_set_default_size(GTK_WINDOW(window_), 800, 600);
     
     // Set minimum window size
@@ -30,7 +30,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::updateTitle() {
-    std::string title = "Text File Viewer";
+    std::string title = "Doc Generator";
     if (!current_set_file_.empty()) {
         // Extract just the filename from the path
         size_t last_slash = current_set_file_.find_last_of("/\\");
@@ -754,7 +754,7 @@ void MainWindow::onAbout(GtkMenuItem* item, gpointer user_data) {
     MainWindow* window = static_cast<MainWindow*>(user_data);
     
     GtkWidget* about_dialog = gtk_about_dialog_new();
-    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about_dialog), "Text File Viewer");
+    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about_dialog), "Doc Generator");
     gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about_dialog), "1.0");
     gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(about_dialog),
                                    "A simple text file viewer with drag-and-drop section ordering");
