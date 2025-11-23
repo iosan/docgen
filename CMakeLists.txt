@@ -26,6 +26,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 include_directories(${PROJECT_SOURCE_DIR}/app/include)
 
 # Find GTK3 and WebKit2GTK
+# Ensure webkit2gtk-4.1 is installed: sudo apt-get install -y libwebkit2gtk-4.1-dev
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 pkg_check_modules(WEBKIT2 REQUIRED webkit2gtk-4.1)
