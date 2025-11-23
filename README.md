@@ -1,3 +1,4 @@
+# ![DocGen Application Screenshot](doc/images/docgen_ss.png)
 
 # DocGen
 
